@@ -2,48 +2,19 @@
 
 A real-time backend scheduling engine that dynamically assigns walk-in customers to compatible barbers based on service type, priority rules, and live availability.
 
-Unlike traditional token systems (FIFO), this system continuously recalculates service order to minimize waiting time and prevent service starvation.
+Unlike traditional FIFO token systems, the queue continuously recalculates order after every event (service finish, VIP entry, barber break, etc.).
 
 ---
 
-## Key Concept
+## Core Idea
 
-Customers do not receive fixed positions in line.
+Customers don’t get a fixed position in line.
 
 The system continuously decides:
 
 **Which customer should be served next by which barber at this moment**
 
-The queue behaves like a scheduling engine rather than a waiting list.
-
----
-
-## System Features
-
-### Dynamic Allocation
-
-* Skill-based barber assignment
-* Automatic reassignment when barber unavailable
-* Parallel multi-barber handling
-
-### Fair Priority Scheduling
-
-Priority Score = Service Weight + VIP Bonus + Waiting Time Factor
-
-Prevents long services or normal customers from starving.
-
-### Real-Time Queue Updates
-
-* Reorders after every event
-* Handles missed customers
-* Supports emergency/VIP insertion
-
-### Token Lifecycle Control
-
-CREATED → WAITING → CALLED → SERVING → COMPLETED
-
-With exception flows:
-MISSED, CANCELLED, REASSIGNED
+This turns the queue into a scheduling engine instead of a waiting list.
 
 ---
 
@@ -56,52 +27,159 @@ MISSED, CANCELLED, REASSIGNED
 
 ---
 
-## System Diagrams
+## System Behaviour Overview
 
-### Use Case Diagram
+### Use Case
 
-![Use Case](./useCaseDiagram.md)
+```mermaid
+flowchart LR
 
-### Sequence Diagram
+Customer --> RequestToken[Request Service Token]
+Customer --> MarkVIP[Mark VIP]
+Customer --> LeaveQueue[Leave Queue]
+Customer --> Rejoin[Rejoin After Missed]
 
-![Sequence](./sequenceDiagram.md)
+Barber --> CallNext[Call Next Customer]
+Barber --> StartService[Start Service]
+Barber --> FinishService[Finish Service]
+Barber --> Pause[Pause Availability]
+Barber --> Transfer[Transfer Customer]
 
-### Class Diagram
+Admin --> ManageServices[Add/Update Services]
+Admin --> AssignSkills[Assign Barber Skills]
+Admin --> ConfigureRules[Configure Priority Rules]
 
-![Class](./classDiagram.md)
+RequestToken --> Scheduler
+FinishService --> Scheduler
+Pause --> Scheduler
+Transfer --> Scheduler
+Rejoin --> Scheduler
 
-### ER Diagram
-
-![ER](./ErDiagram.md)
+Scheduler --> Recalculate[Recalculate Queue Order]
+Scheduler --> AssignBarber[Assign Compatible Barber]
+```
 
 ---
 
-## Backend Responsibilities
+### Main Flow
 
-* Scheduling engine
-* Priority calculation
-* Compatibility validation
-* State transition enforcement
-* Waiting time prediction
-* Event driven reallocation
+```mermaid
+sequenceDiagram
+actor Customer
+participant Controller
+participant TokenService
+participant PriorityPolicy
+participant QueueManager
+participant Scheduler
+participant Barber
+participant DB
+
+Customer->>Controller: Request service
+Controller->>TokenService: Create token
+TokenService->>PriorityPolicy: Calculate priority
+PriorityPolicy-->>TokenService: Score
+
+TokenService->>DB: Save token (WAITING)
+TokenService->>QueueManager: Insert token
+TokenService->>Scheduler: Trigger allocation
+
+Scheduler->>DB: Find available barber
+Scheduler->>DB: Update token -> CALLED
+Scheduler-->>Barber: Notify
+
+Barber->>Controller: Start service
+Controller->>DB: SERVING
+
+Barber->>Controller: Finish service
+Controller->>DB: COMPLETED
+Controller->>Scheduler: Next allocation
+```
+
+---
+
+### Backend Architecture
+
+```mermaid
+classDiagram
+
+class Token
+class Service
+class Barber
+class QueueManager
+class Scheduler
+class PriorityPolicy
+class CompatibilityChecker
+class TokenStateMachine
+class NotificationService
+
+Scheduler --> QueueManager
+Scheduler --> PriorityPolicy
+Scheduler --> CompatibilityChecker
+Scheduler --> TokenStateMachine
+QueueManager --> Token
+Token --> Service
+Barber --> Service
+```
+
+---
+
+### Database Structure
+
+```mermaid
+erDiagram
+
+CUSTOMERS ||--o{ TOKENS : creates
+SERVICES ||--o{ TOKENS : requested_in
+TOKENS ||--o{ QUEUE_EVENTS : logs
+BARBERS ||--o{ BARBER_SESSIONS : handles
+TOKENS ||--|| BARBER_SESSIONS : served_by
+```
+
+---
+
+## Scheduling Logic
+
+Priority Score:
+
+```
+priorityScore = servicePriority + VIPBonus + waitingTimeFactor
+```
+
+Ensures:
+
+* Fairness
+* No starvation
+* Efficient barber utilization
+
+---
+
+## Token Lifecycle
+
+```
+CREATED → WAITING → CALLED → SERVING → COMPLETED
+           ↓
+        MISSED / CANCELLED / REASSIGNED
+```
 
 ---
 
 ## Project Focus
 
-This project emphasizes backend system design, OOP architecture, and process correctness over UI complexity.
+This project emphasizes backend system design:
+
+* State machine modelling
+* Scheduling logic
+* Resource allocation
+* Event driven updates
+* Data consistency
+
+UI is only a control panel for triggering backend behaviour.
 
 ---
 
-## Tech Stack (Planned)
+## Planned Tech Stack
 
 Backend: Node.js / Express
-Database: PostgreSQL
+Database: MySQL
 Realtime: WebSockets
-Frontend: Minimal control dashboard
-
----
-
-## Expected Outcome
-
-A working operational queue system capable of dynamically controlling service order in a real salon environment while maintaining correctness of state transitions and allocation decisions.
+Frontend: Minimal dashboard
